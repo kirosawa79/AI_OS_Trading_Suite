@@ -6,7 +6,7 @@ from database import TradingDatabase
 st.set_page_config(page_title="AI-OS PRO Dashboard", page_icon="🏛️", layout="wide")
 
 # =====================================================================
-# MÓDULO DE SEGURIDAD INTERNA: LOGIN CONTROL LOCK
+# MÓDULO DE SEGURIDAD INTERNA: LOGIN CONTROL LOCK (NATIVO RESPONSIVO)
 # =====================================================================
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
@@ -30,7 +30,6 @@ if not st.session_state["autenticado"]:
             st.button("Desbloquear Terminal", on_click=validar_credenciales, use_container_width=True)
         st.stop()
 
-
 # =====================================================================
 # SINOPSIS DEL SISTEMA (EJECUCIÓN AUTORIZADA)
 # =====================================================================
@@ -44,6 +43,7 @@ if st.sidebar.button("🔒 Cerrar Sesión Segura", use_container_width=True):
     st.session_state["autenticado"] = False
     st.rerun()
 
+# --- FUNCIONES CORE MATEMÁTICAS ---
 def c_emas_bb(s):
     d = p.DataFrame(index=s.index); d['Close'] = s
     for sp, c in [(9,'EMA9'),(20,'EMA20'),(40,'EMA40'),(100,'EMA100'),(200,'EMA200')]: d[c] = s.ewm(span=sp, adjust=False).mean()
@@ -69,8 +69,7 @@ def verificar_filtro_apertura(index_serie):
 
 def extraer_iv_segura(ticker, est, c_a):
     try:
-        obj = yf.Ticker(ticker)
-        f_e = v_optimo(obj.options)
+        obj = yf.Ticker(ticker); f_e = v_optimo(obj.options)
         if f_e != "No disponible":
             dfd = obj.option_chain(f_e).calls if "CALL" in est else obj.option_chain(f_e).puts
             ive = float(dfd.loc[(dfd['strike'] - round(c_a)).abs().idxmin(), 'impliedVolatility'])
@@ -78,13 +77,15 @@ def extraer_iv_segura(ticker, est, c_a):
     except: pass
     return 0.35, "No disponible"
 
-# MÓDULO 1: ACCIONES
+# =====================================================================
+# MÓDULO 1: OPERAR ACCIONES
+# =====================================================================
 if mod == "📈 Operar Acciones":
     st.header("📈 Operación Core de Acciones al Contado")
-    t = st.text_input("Ticker:", "AAPL").upper().strip()
-    cap = st.number_input("Capital (USD):", min_value=10.0, value=1000.0)
-    justificacion_usuario = st.text_area("Justificación técnica:")
-    if st.button("Evaluar Acción"):
+    t = st.text_input("Ticker:", "AAPL", key="txt_acciones").upper().strip()
+    cap = st.number_input("Capital (USD):", min_value=10.0, value=1000.0, key="num_acciones")
+    justificacion_usuario = st.text_area("Justificación técnica:", key="area_acciones")
+    if st.button("Evaluar Acción", key="btn_acciones"):
         df = yf.download(t, period="60d", interval="1h", progress=False)
         if df.empty: st.error("Sin datos.")
         else:
@@ -97,15 +98,17 @@ if mod == "📈 Operar Acciones":
                 st.info("🔥 CRUCE + Activo" if e20 > e40 else "⏳ Espera un Pullback a soportes.")
             else: st.error(f"❌ Riesgo: Precio por debajo de la EMA200 (${round(e200,2)}).")
 
-# MÓDULO 2: OPCIONES
+# =====================================================================
+# MÓDULO 2: OPERAR OPCIONES
+# =====================================================================
 elif mod == "🎫 Operar Opciones":
     st.header("🎫 Operación de Derivados (EMA Cruces, BB Shield & Apertura)")
     c1, col2, col3 = st.columns(3)
-    with c1: t = st.text_input("Subyacente:", "SPY").upper().strip()
-    with col2: cap = st.number_input("Capital Cuenta (USD):", min_value=10.0, value=1000.0)
-    with col3: risk = st.slider("% Riesgo:", 1, 100, 10) / 100.0
-    justificacion_usuario = st.text_area("¿Por qué compras contratos hoy? (Filtro Emocional):")
-    if st.button("Lanzar Escáner"):
+    with c1: t = st.text_input("Subyacente:", "SPY", key="txt_opciones").upper().strip()
+    with col2: cap = st.number_input("Capital Cuenta (USD):", min_value=10.0, value=1000.0, key="num_opciones")
+    with col3: risk = st.slider("% Riesgo:", 1, 100, 10, key="sld_opciones") / 100.0
+    justificacion_usuario = st.text_area("¿Por qué compras contratos hoy? (Filtro Emocional):", key="area_opciones")
+    if st.button("Lanzar Escáner", key="btn_opciones"):
         df = yf.download(t, period="60d", interval="1h", progress=False)
         if df.empty: st.error("Sin datos de mercado.")
         else:
@@ -135,17 +138,12 @@ elif mod == "🎫 Operar Opciones":
             fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark" if cf_canvas=="plotly_dark" else None, paper_bgcolor=cf_canvas if cf_canvas!="plotly_dark" else None, plot_bgcolor=cf_canvas if cf_canvas!="plotly_dark" else None, margin=dict(l=10, r=10, t=10, b=10), height=400)
             st.plotly_chart(fig, use_container_width=True)
             
-            if f_ap:
-                st.warning("⚠️ [SHIELD APERTURA ACTIVO] Bloqueo temporal en los primeros 30 minutos de Nueva York.")
-            elif est == "SIN_ALERTA":
-                st.info("🛡️ Filtro Bollinger-EMA: Activo cotiza dentro de rangos normales de compresión. Primas protegidas.")
+            if f_ap: st.warning("⚠️ [SHIELD APERTURA ACTIVO] Bloqueo temporal en los primeros 30 minutos de Nueva York.")
+            elif est == "SIN_ALERTA": st.info("🛡️ Filtro Bollinger-EMA: Activo cotiza dentro de rangos normales de compresión. Primas protegidas.")
             else:
                 st.success(f"🚀 EXPANSIÓN CONFIRMADA: {est}")
                 iv, f_e = extraer_iv_segura(t, est, c_a)
                 st.metric("Volatilidad Implícita (IV)", f"{round(iv * 100, 2)}%")
-                
-                if any(pa in justificacion_usuario.lower() for pa in ["fomo", "rapido", "recuperar", "ganar", "urgente"]):
-                    st.error("❌ RECHAZADA: Sesgo emocional detectado.")
+                if any(pa in justificacion_usuario.lower() for pa in ["fomo", "rapido", "recuperar", "ganar", "urgente"]): st.error("❌ RECHAZADA: Sesgo emocional detectado.")
                 else:
                     st.success("✅ CONTRATO AUTORIZADO.")
-                    esc = "CALL" in est; d = 0.25 if cap < 3000 else 0.50; stk = round(c_a * (1.02 if esc else 0.98)) if cap < 3000 else round(c_a)
