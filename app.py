@@ -20,7 +20,7 @@ def validar_credenciales():
         st.error("🛑 Acceso Denegado: Credenciales inválidas.")
 
 if not st.session_state["autenticado"]:
-    _, col_l2, _ = st.columns()
+    _, col_l2, _ = st.columns(3)
     with col_l2:
         with st.container(border=True):
             st.title("🏛️ AI-INVESTMENT OS")
