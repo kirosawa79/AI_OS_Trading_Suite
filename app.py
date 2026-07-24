@@ -3,7 +3,7 @@ import streamlit as st, pandas as p, yfinance as yf, datetime as dt, os, plotly.
 from data_collector import DataCollector
 from database import TradingDatabase
 
-# Configuración del Entorno Gráfico AI-OS
+# Configuración del Entorno Gráfico AI-OS PRO
 st.set_page_config(page_title="AI-OS PRO Dashboard", page_icon="🏛️", layout="wide")
 
 # =====================================================================
@@ -96,7 +96,6 @@ if mod == "📈 Operar Acciones":
                 st.success(f"🟢 Filtro Estructural Aprobado. Precio (${round(c_a,2)}) > EMA200 (${round(e200,2)}).")
                 st.info("🔥 CRUCE + Activo" if e20 > e40 else "⏳ Espera un Pullback a soportes.")
             else: st.error(f"❌ Riesgo: Precio por debajo de la EMA200 (${round(e200,2)}).")
-
 # =====================================================================
 # MÓDULO 2: OPERAR OPCIONES
 # =====================================================================
@@ -146,35 +145,18 @@ elif mod == "🎫 Operar Opciones":
                 if any(pa in justificacion_usuario.lower() for pa in ["fomo", "rapido", "recuperar", "ganar", "urgente"]): st.error("❌ RECHAZADA: Sesgo emocional detectado.")
                 else:
                     st.success("✅ CONTRATO AUTORIZADO.")
-                                       # --- CÁLCULO Y GESTIÓN DE RIESGO SANEADO ---
-                    esc = "CALL" in est
-                    d = 0.25 if cap < 3000 else 0.50
-                    stk = round(c_a * (1.02 if esc else 0.98)) if cap < 3000 else round(c_a)
-                    tp = round(c_a * (1.05 if esc else 0.95), 2)
-                    sl = round(c_a * (0.98 if esc else 1.02), 2)
-                    p_b = max(round((c_a * 0.005) * (1 + iv), 2), 1.20)
-                    c_l = p_b * 100
-                    m_r = cap * risk
-                    cont = int(m_r // c_l) if c_l <= m_r else 0
-
+                    esc = "CALL" in est; d = 0.25 if cap < 3000 else 0.50; stk = round(c_a * (1.02 if esc else 0.98)) if cap < 3000 else round(c_a)
+                    tp = round(c_a * (1.05 if esc else 0.95), 2); sl = round(c_a * (0.98 if esc else 1.02), 2)
+                    p_b = max(round((c_a * 0.005) * (1 + iv), 2), 1.20); c_l = p_b * 100; m_r = cap * risk; cont = int(m_r // c_l) if c_l <= m_r else 0
                     st.markdown("### 🎫 AI-OS FICHA OPERATIVA OPTIMIZADA")
-                    st.info(f"**Subyacente:** {t} (${round(c_a,2)} USD)")
-                    st.write(f"**Strike Sugerido:** ${stk} USD | **Expiración:** {f_e}")
+                    st.info(f"**Subyacente:** {t} (${round(c_a,2)} USD)"); st.write(f"**Strike Sugerido:** ${stk} USD | **Expiración:** {f_e}")
                     st.success(f"🎯 Meta (TP): ${tp} USD | 🛑 Freno (SL): ${sl} USD")
-
                     if cont > 0:
-                        st.metric("Contratos Sugeridos", cont)
-                        st.write(f"🛒 **Costo Total:** ${round(cont * c_l, 2)} USD")
-                        st.write(f"📈 **Proyección Ganancia:** +${round(abs(c_a - tp) * d * 100 * cont, 2)} USD")
-                    else:
-                        st.error("🛑 Alerta: Costo excede tu presupuesto de riesgo.")
-                    
-                    try:
-                        db.guardar_registro(t, est, c_a, "Mente objetiva")
-                    except:
-                        pass
-        except Exception as e:
-            st.error(f"Error general en opciones: {e}")
+                        st.metric("Contratos Sugeridos", cont); st.write(f"🛒 **Costo Total:** ${round(cont * c_l, 2)} USD")
+                        st.write(f"📈 **Proyección Ganancia:** +${round(abs(c_a - tp)*d*100*cont,2)} USD")
+                    else: st.error("🛑 Alerta: Costo excede tu presupuesto de riesgo.")
+                    try: db.guardar_registro(t, est, c_a, "Mente objetiva")
+                    except: pass
 
 # =====================================================================
 # MÓDULO 3: ESCÁNER MULTITICKER PRO
@@ -183,7 +165,6 @@ elif mod == "🚀 Escáner Multiticker":
     st.header("🚀 Tablero de Control - Escáner Cuantitativo Pro")
     st.write("Filtro en tiempo real basado en el abanico de EMAs y las Bandas de Volatilidad de Bollinger.")
     ent = st.text_input("Ingresa los Tickers separados por comas:", "AAPL,NVDA,SPY,TSLA", key="txt_escaner_fijo").upper().strip()
-    
     if st.button("Lanzar Escaneo", key="btn_escaner_fijo"):
         lista = [x.strip() for x in ent.split(",") if x.strip()]
         cols = st.columns(4)
@@ -197,20 +178,12 @@ elif mod == "🚀 Escáner Multiticker":
                         m = c_emas_bb(sc)
                         c_ac, e20, e40, e200 = float(m['Close'].iloc[-1]), float(m['EMA20'].iloc[-1]), float(m['EMA40'].iloc[-1]), float(m['EMA200'].iloc[-1])
                         b_sup, b_inf = float(m['BB_Sup'].iloc[-1]), float(m['BB_Inf'].iloc[-1])
-                        
-                        st.subheader(f"📊 {t}")
-                        st.metric(label="Precio", value=f"${round(c_ac, 2)}")
-                        
-                        if c_ac > e20 and e20 > e40 and c_ac > e200 and c_ac > b_sup:
-                            st.success("🚀 SQUEEZE + (CALL)")
-                        elif c_ac < e20 and e20 < e40 and c_ac < e200 and c_ac < b_inf:
-                            st.error("🔴 SQUEEZE - (PUT)")
-                        else:
-                            st.info("⏳ COMPRIMIDO / RANGO")
-                    else:
-                        st.error("Sin datos")
-                except:
-                    st.error("Error")
+                        st.subheader(f"📊 {t}"); st.metric(label="Precio", value=f"${round(c_ac, 2)}")
+                        if c_ac > e20 and e20 > e40 and c_ac > e200 and c_ac > b_sup: st.success("🚀 SQUEEZE + (CALL)")
+                        elif c_ac < e20 and e20 < e40 and c_ac < e200 and c_ac < b_inf: st.error("🔴 SQUEEZE - (PUT)")
+                        else: st.info("⏳ COMPRIMIDO / RANGO")
+                    else: st.error("Sin datos")
+                except: st.error("Error")
 
 # =====================================================================
 # MÓDULO 4: BITÁCORA HISTÓRICA
@@ -219,12 +192,8 @@ elif mod == "📋 Bitácora":
     st.header("📋 Auditoría de Trades & Historial SQLite")
     if os.path.exists("trading_system.db"):
         try:
-            import sqlite3
-            conn = sqlite3.connect("trading_system.db")
+            import sqlite3; conn = sqlite3.connect("trading_system.db")
             df_db = p.read_sql_query("SELECT * FROM registro_operaciones ORDER BY ROWID DESC LIMIT 10;", conn)
-            st.dataframe(df_db, use_container_width=True)
-            conn.close()
-        except:
-            st.error("Error de lectura.")
-    else:
-        st.warning("Sin base de datos local.")
+            st.dataframe(df_db, use_container_width=True); conn.close()
+        except: st.error("Error de lectura.")
+    else: st.warning("Sin base de datos local.")
