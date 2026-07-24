@@ -3,10 +3,11 @@ import streamlit as st, pandas as p, yfinance as yf, datetime as dt, os, plotly.
 from data_collector import DataCollector
 from database import TradingDatabase
 
+# Configuración del Entorno Gráfico AI-OS
 st.set_page_config(page_title="AI-OS PRO Dashboard", page_icon="🏛️", layout="wide")
 
 # =====================================================================
-# MÓDULO DE SEGURIDAD INTERNA: LOGIN CONTROL LOCK (NATIVO RESPONSIVO)
+# MÓDULO DE SEGURIDAD INTERNA: LOGIN CONTROL LOCK
 # =====================================================================
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
@@ -19,8 +20,7 @@ def validar_credenciales():
     else:
         st.error("🛑 Acceso Denegado: Credenciales inválidas.")
 
-    if not st.session_state["autenticado"]:
-    if not st.session_state["autenticado"]:
+if not st.session_state["autenticado"]:
     with st.container(border=True):
         st.title("🏛️ AI-INVESTMENT OS")
         st.write("🔒 **SECURITY ACCESS TERMINAL**")
@@ -102,8 +102,8 @@ if mod == "📈 Operar Acciones":
 # =====================================================================
 elif mod == "🎫 Operar Opciones":
     st.header("🎫 Operación de Derivados (EMA Cruces, BB Shield & Apertura)")
-    c1, col2, col3 = st.columns(3)
-    with c1: t = st.text_input("Subyacente:", "SPY", key="txt_opciones").upper().strip()
+    col1, col2, col3 = st.columns(3)
+    with col1: t = st.text_input("Subyacente:", "SPY", key="txt_opciones").upper().strip()
     with col2: cap = st.number_input("Capital Cuenta (USD):", min_value=10.0, value=1000.0, key="num_opciones")
     with col3: risk = st.slider("% Riesgo:", 1, 100, 10, key="sld_opciones") / 100.0
     justificacion_usuario = st.text_area("¿Por qué compras contratos hoy? (Filtro Emocional):", key="area_opciones")
@@ -146,7 +146,6 @@ elif mod == "🎫 Operar Opciones":
                 if any(pa in justificacion_usuario.lower() for pa in ["fomo", "rapido", "recuperar", "ganar", "urgente"]): st.error("❌ RECHAZADA: Sesgo emocional detectado.")
                 else:
                     st.success("✅ CONTRATO AUTORIZADO.")
-                    # --- CÁLCULO Y GESTIÓN DE RIESGO SANEADO ---
                     esc = "CALL" in est
                     d = 0.25 if cap < 3000 else 0.50
                     stk = round(c_a * (1.02 if esc else 0.98)) if cap < 3000 else round(c_a)
