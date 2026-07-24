@@ -146,6 +146,7 @@ elif mod == "🎫 Operar Opciones":
                 if any(pa in justificacion_usuario.lower() for pa in ["fomo", "rapido", "recuperar", "ganar", "urgente"]): st.error("❌ RECHAZADA: Sesgo emocional detectado.")
                 else:
                     st.success("✅ CONTRATO AUTORIZADO.")
+                                       # --- CÁLCULO Y GESTIÓN DE RIESGO SANEADO ---
                     esc = "CALL" in est
                     d = 0.25 if cap < 3000 else 0.50
                     stk = round(c_a * (1.02 if esc else 0.98)) if cap < 3000 else round(c_a)
@@ -157,14 +158,14 @@ elif mod == "🎫 Operar Opciones":
                     cont = int(m_r // c_l) if c_l <= m_r else 0
 
                     st.markdown("### 🎫 AI-OS FICHA OPERATIVA OPTIMIZADA")
-                    st.info(f"Subyacente: {t} (${round(c_a,2)} USD)")
-                    st.write(f"Strike Sugerido: ${stk} USD | Expiración: {f_e}")
+                    st.info(f"**Subyacente:** {t} (${round(c_a,2)} USD)")
+                    st.write(f"**Strike Sugerido:** ${stk} USD | **Expiración:** {f_e}")
                     st.success(f"🎯 Meta (TP): ${tp} USD | 🛑 Freno (SL): ${sl} USD")
 
                     if cont > 0:
                         st.metric("Contratos Sugeridos", cont)
-                        st.write(f"🛒 Costo Total: ${round(cont * c_l, 2)} USD")
-                        st.write(f"📈 Proyección Ganancia: +${round(abs(c_a - tp) * d * 100 * cont, 2)} USD")
+                        st.write(f"🛒 **Costo Total:** ${round(cont * c_l, 2)} USD")
+                        st.write(f"📈 **Proyección Ganancia:** +${round(abs(c_a - tp) * d * 100 * cont, 2)} USD")
                     else:
                         st.error("🛑 Alerta: Costo excede tu presupuesto de riesgo.")
                     
@@ -173,7 +174,7 @@ elif mod == "🎫 Operar Opciones":
                     except:
                         pass
         except Exception as e:
-            st.error(f"Error general: {e}")
+            st.error(f"Error general en opciones: {e}")
 
 # =====================================================================
 # MÓDULO 3: ESCÁNER MULTITICKER PRO
@@ -187,7 +188,7 @@ elif mod == "🚀 Escáner Multiticker":
         lista = [x.strip() for x in ent.split(",") if x.strip()]
         cols = st.columns(4)
         for i, t in enumerate(lista):
-            with cols[i % len(cols)]:
+            with cols[i % 4]:
                 try:
                     df = yf.download(t, period="60d", interval="1h", progress=False)
                     if not df.empty:
@@ -227,4 +228,3 @@ elif mod == "📋 Bitácora":
             st.error("Error de lectura.")
     else:
         st.warning("Sin base de datos local.")
-
