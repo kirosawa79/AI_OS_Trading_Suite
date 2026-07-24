@@ -20,15 +20,16 @@ def validar_credenciales():
         st.error("🛑 Acceso Denegado: Credenciales inválidas.")
 
 if not st.session_state["autenticado"]:
-    st.markdown("<br><br>", unsafe_html=True)
-    _, col_l2, _ = st.columns([1,2,1])
+    _, col_l2, _ = st.columns([1, 2, 1])
     with col_l2:
-        st.markdown('<div style="background-color: #1a1a1a; padding: 30px; border-radius: 15px; border: 2px solid #bdc3c7; text-align: center;"><h1 style="color: white; margin: 0; font-size: 28px;">🏛️ AI-INVESTMENT OS</h1><p style="color: #bdc3c7; font-size: 14px; margin-top: 5px;">SECURITY ACCESS TERMINAL</p></div>', unsafe_html=True)
-        st.write("<br>", unsafe_html=True)
-        st.text_input("Ingresa tu ID de Operador:", key="usuario_input", placeholder="Ej: KIROSAWA")
-        st.text_input("Ingresa tu Clave de Encriptación:", key="clave_input", type="password", placeholder="••••••••")
-        st.button("Desbloquear Terminal", on_click=validar_credenciales, use_container_width=True)
+        with st.container(border=True):
+            st.title("🏛️ AI-INVESTMENT OS")
+            st.write("🔒 **SECURITY ACCESS TERMINAL**")
+            st.text_input("ID de Operador:", key="usuario_input", placeholder="Ej: KIROSAWA")
+            st.text_input("Clave de Encriptación:", key="clave_input", type="password", placeholder="••••••••")
+            st.button("Desbloquear Terminal", on_click=validar_credenciales, use_container_width=True)
         st.stop()
+
 
 # =====================================================================
 # SINOPSIS DEL SISTEMA (EJECUCIÓN AUTORIZADA)
