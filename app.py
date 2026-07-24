@@ -7,52 +7,48 @@ from database import TradingDatabase
 st.set_page_config(page_title="AI-OS PRO Dashboard", page_icon="🏛️", layout="wide")
 
 # =====================================================================
-# MÓDULO DE SEGURIDAD INTERNA: CONTROL DE ACCESO (LOGIN SHIELD)
+# MÓDULO DE SEGURIDAD INTERNA: LOGIN CONTROL LOCK
 # =====================================================================
-# Definición de tus credenciales de Administrador Core (Puedes cambiarlas aquí)
-USUARIO_CORE = "kirosawa"
-PASSWORD_CORE = "ProTrading2026!"
-
-# Inicializar la variable de estado de sesión si no existe
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 
-# Renderizar pantalla de bloqueo si el usuario no ha iniciado sesión
+def validar_credenciales():
+    if st.session_state["usuario_input"].upper().strip() == "KIROSAWA" and st.session_state["clave_input"] == "Aios2026*":
+        st.session_state["autenticado"] = True
+        st.session_state["usuario_input"] = ""
+        st.session_state["clave_input"] = ""
+    else:
+        st.error("🛑 Acceso Denegado: Credenciales inválidas.")
+
 if not st.session_state["autenticado"]:
     st.markdown("<br><br>", unsafe_html=True)
     col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
-    
     with col_l2:
         st.markdown("""
-        <div style="background-color: #1e1e1e; border: 2px solid #9b59b6; padding: 30px; border-radius: 15px; text-align: center;">
-            <h1 style="color: white; margin: 0; font-size: 28px;">🏛️ AI-OS SECURITY SHIELD</h1>
-            <p style="color: #bdc3c7; font-size: 13px; margin-top: 5px;">Plataforma Cuántica Restringida | Acceso Exclusivo</p>
+        <div style="background-color: #1a1a1a; padding: 30px; border-radius: 15px; border: 2px solid #bdc3c7; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">🏛️ AI-INVESTMENT OS</h1>
+            <p style="color: #bdc3c7; font-size: 14px; margin-top: 5px;">SECURITY ACCESS TERMINAL</p>
         </div>
         """, unsafe_html=True)
-        st.write("")
-        
-        # Cajas de entrada de credenciales con diseño adaptado
-        input_usuario = st.text_input("Ingresa tu ID de Desarrollador:", autocomplete="username").strip()
-        input_password = st.text_input("Ingresa tu Contraseña de Seguridad:", type="password", autocomplete="current-password")
-        
-        st.write("")
-        if st.button("Desbloquear Sistema Core", use_container_width=True):
-            if input_usuario == USUARIO_CORE and input_password == PASSWORD_CORE:
-                st.session_state["autenticado"] = True
-                st.success("🔒 Acceso Autorizado. Inicializando Kirosawa Engine...")
-                st.rerun()
-            else:
-                st.error("🛑 Credenciales Inválidas. Intento de acceso registrado en el servidor.")
-    st.stop() # Detiene la ejecución del resto del script si no está autenticado
+        st.write("<br>", unsafe_html=True)
+        st.text_input("Ingresa tu ID de Operador:", key="usuario_input", placeholder="Ej: KIROSAWA")
+        st.text_input("Ingresa tu Clave de Encriptación:", key="clave_input", type="password", placeholder="••••••••")
+        st.button("Desbloquear Terminal", on_click=validar_credenciales, use_container_width=True)
+        st.stop()
 
 # =====================================================================
-# ENTORNO OPERATIVO LIBERADO (SOLO ACCESIBLE CON LOGIN EXITOSO)
+# SINOPSIS DEL SISTEMA (EJECUCIÓN AUTORIZADA)
 # =====================================================================
 st.title("🏛️ AI-INVESTMENT OPERATING SYSTEM (AI-OS) PRO")
-st.caption("Sistema de Control Cuántico, Filtro Psicológico & Apertura Shield | Desarrollado por KIROSAWA")
+st.caption("Filtros Cuánticos, Análisis Geométrico & Apertura Shield | Desarrollado por KIROSAWA")
 
 db = TradingDatabase()
+st.sidebar.header("🕹️ PANEL DE CONTROL")
 mod = st.sidebar.radio("Módulo:", ["📈 Operar Acciones", "🎫 Operar Opciones", "🚀 Escáner Multiticker", "📋 Bitácora"])
+
+if st.sidebar.button("🔒 Cerrar Sesión Segura", use_container_width=True):
+    st.session_state["autenticado"] = False
+    st.rerun()
 
 def c_emas_bb(s):
     d = p.DataFrame(index=s.index); d['Close'] = s
@@ -77,11 +73,12 @@ def verificar_filtro_apertura(index_serie):
     except: pass
     return False
 
+# MÓDULO 1: ACCIONES
 if mod == "📈 Operar Acciones":
     st.header("📈 Operación Core de Acciones al Contado")
     t = st.text_input("Ticker:", "AAPL").upper().strip()
     cap = st.number_input("Capital (USD):", min_value=10.0, value=1000.0)
-    just = st.text_area("Justificación técnica:")
+    justificacion_usuario = st.text_area("Justificación técnica:")
     if st.button("Evaluar Acción"):
         df = yf.download(t, period="60d", interval="1h", progress=False)
         if df.empty: st.error("Sin datos.")
@@ -95,13 +92,14 @@ if mod == "📈 Operar Acciones":
                 st.info("🔥 CRUCE + Activo" if e20 > e40 else "⏳ Espera un Pullback a soportes.")
             else: st.error(f"❌ Riesgo: Precio por debajo de la EMA200 (${round(e200,2)}).")
 
+# MÓDULO 2: OPCIONES
 elif mod == "🎫 Operar Opciones":
     st.header("🎫 Operación de Derivados (EMA Cruces, BB Shield & Apertura)")
     c1, col2, col3 = st.columns(3)
     with c1: t = st.text_input("Subyacente:", "SPY").upper().strip()
     with col2: cap = st.number_input("Capital Cuenta (USD):", min_value=10.0, value=1000.0)
     with col3: risk = st.slider("% Riesgo:", 1, 100, 10) / 100.0
-    just = st.text_area("¿Por qué compras contratos hoy? (Filtro Emocional):")
+    justificacion_usuario = st.text_area("¿Por qué compras contratos hoy? (Filtro Emocional):")
     if st.button("Lanzar Escáner"):
         try:
             df = yf.download(t, period="60d", interval="1h", progress=False)
@@ -141,5 +139,8 @@ elif mod == "🎫 Operar Opciones":
                         dfd = obj.option_chain(f_e).calls if "CALL" in est else obj.option_chain(f_e).puts
                         ive = float(dfd.loc[(dfd['strike'] - round(c_a)).abs().idxmin(), 'impliedVolatility'])
                         if ive > 0: iv = ive
-                    except Exception as e: st.warning(f"IV Base: {e}")
+                    except: pass
                     st.metric("Volatilidad Implícita (IV)", f"{round(iv * 100, 2)}%")
+                    if any(pa in justificacion_usuario.lower() for pa in ["fomo", "rapido", "recuperar", "ganar", "urgente"]): st.error("❌ RECHAZADA: Sesgo emocional detectado.")
+                    else:
+                        st.success("✅ CONTRATO AUTORIZADO.")
