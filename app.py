@@ -3,7 +3,6 @@ import streamlit as st, pandas as p, yfinance as yf, datetime as dt, os, plotly.
 from data_collector import DataCollector
 from database import TradingDatabase
 
-# Configuración del Entorno Gráfico AI-OS
 st.set_page_config(page_title="AI-OS PRO Dashboard", page_icon="🏛️", layout="wide")
 
 # =====================================================================
@@ -22,14 +21,9 @@ def validar_credenciales():
 
 if not st.session_state["autenticado"]:
     st.markdown("<br><br>", unsafe_html=True)
-    _, col_l2, _ = st.columns([1, 2, 1])
+    _, col_l2, _ = st.columns([1,2,1])
     with col_l2:
-        st.markdown("""
-        <div style="background-color: #1a1a1a; padding: 30px; border-radius: 15px; border: 2px solid #bdc3c7; text-align: center;">
-            <h1 style="color: white; margin: 0; font-size: 28px;">🏛️ AI-INVESTMENT OS</h1>
-            <p style="color: #bdc3c7; font-size: 14px; margin-top: 5px;">SECURITY ACCESS TERMINAL</p>
-        </div>
-        """, unsafe_html=True)
+        st.markdown('<div style="background-color: #1a1a1a; padding: 30px; border-radius: 15px; border: 2px solid #bdc3c7; text-align: center;"><h1 style="color: white; margin: 0; font-size: 28px;">🏛️ AI-INVESTMENT OS</h1><p style="color: #bdc3c7; font-size: 14px; margin-top: 5px;">SECURITY ACCESS TERMINAL</p></div>', unsafe_html=True)
         st.write("<br>", unsafe_html=True)
         st.text_input("Ingresa tu ID de Operador:", key="usuario_input", placeholder="Ej: KIROSAWA")
         st.text_input("Ingresa tu Clave de Encriptación:", key="clave_input", type="password", placeholder="••••••••")
@@ -49,7 +43,6 @@ if st.sidebar.button("🔒 Cerrar Sesión Segura", use_container_width=True):
     st.session_state["autenticado"] = False
     st.rerun()
 
-# FUNCIÓN 1: CÁLCULO DE INDICADORES (EMAs + BOLLINGER 21)
 def c_emas_bb(s):
     d = p.DataFrame(index=s.index); d['Close'] = s
     for sp, c in [(9,'EMA9'),(20,'EMA20'),(40,'EMA40'),(100,'EMA100'),(200,'EMA200')]: d[c] = s.ewm(span=sp, adjust=False).mean()
@@ -57,7 +50,6 @@ def c_emas_bb(s):
     d['BB_Sup'] = d['BB_Base'] + (2.1 * d['BB_Std']); d['BB_Inf'] = d['BB_Base'] - (2.1 * d['BB_Std'])
     return d
 
-# FUNCIÓN 2: BUSCADOR DE VENCIMIENTO ÓPTIMO (VIERNES)
 def v_optimo(fs):
     hoy = dt.date.today()
     for f in fs:
@@ -65,9 +57,8 @@ def v_optimo(fs):
             y, m, d = [int(x) for x in f.split('-')]
             if 7 <= (dt.date(y, m, d) - hoy).days <= 15: return f
         except: continue
-    return fs[0] if fs else "No disponible"
+    return fs if fs else "No disponible"
 
-# FUNCIÓN 3: FILTRO DE APERTURA DE NUEVA YORK
 def verificar_filtro_apertura(index_serie):
     try:
         u = index_serie[-1]
@@ -75,7 +66,6 @@ def verificar_filtro_apertura(index_serie):
     except: pass
     return False
 
-# FUNCIÓN 4: EXTRACCIÓN PROTEGIDA DE IV SHIELD
 def extraer_iv_segura(ticker, est, c_a):
     try:
         obj = yf.Ticker(ticker)
@@ -83,7 +73,7 @@ def extraer_iv_segura(ticker, est, c_a):
         if f_e != "No disponible":
             dfd = obj.option_chain(f_e).calls if "CALL" in est else obj.option_chain(f_e).puts
             ive = float(dfd.loc[(dfd['strike'] - round(c_a)).abs().idxmin(), 'impliedVolatility'])
-            return ive if ive > 0 else 0.35, f_e
+            return (ive if ive > 0 else 0.35), f_e
     except: pass
     return 0.35, "No disponible"
 
@@ -123,11 +113,10 @@ elif mod == "🎫 Operar Opciones":
             m = c_emas_bb(sc)
             c_a, e9, e20, e40, e200 = float(m['Close'].iloc[-1]), float(m['EMA9'].iloc[-1]), float(m['EMA20'].iloc[-1]), float(m['EMA40'].iloc[-1]), float(m['EMA200'].iloc[-1])
             bb_sup, bb_inf = float(m['BB_Sup'].iloc[-1]), float(m['BB_Inf'].iloc[-1])
-            
             f_ap = verificar_filtro_apertura(df.index)
             est = "CALL_PM40" if c_a > e20 and e20 > e40 and c_a > e200 and c_a > bb_sup else ("PUT_PM40" if c_a < e20 and e20 < e40 and c_a < e200 and c_a < bb_inf else "SIN_ALERTA")
             
-            st.markdown("### 📊 ANÁLISIS GEOMÉTRICE INSTITUCIONAL (Velas 1H)")
+            st.markdown("### 📊 ANÁLISIS GEOMÉTRICO INSTITUCIONAL (Velas 1H)")
             dg = df.tail(45).copy(); dg['E9'] = dg['Close'].ewm(span=9, adjust=False).mean(); dg['E20'] = dg['Close'].ewm(span=20, adjust=False).mean(); dg['E40'] = dg['Close'].ewm(span=40, adjust=False).mean(); dg['E100'] = dg['Close'].ewm(span=100, adjust=False).mean(); dg['E200'] = dg['Close'].ewm(span=200, adjust=False).mean()
             dg['BB_B'] = dg['Close'].rolling(21).mean(); dg['BB_S'] = dg['Close'].rolling(21).std(); dg['B_Sup'] = dg['BB_B'] + (2.1 * dg['BB_S']); dg['B_Inf'] = dg['BB_B'] - (2.1 * dg['BB_S'])
             dg['p20'], dg['p40'] = dg['E20'].shift(1), dg['E40'].shift(1)
@@ -145,8 +134,10 @@ elif mod == "🎫 Operar Opciones":
             fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark" if cf_canvas=="plotly_dark" else None, paper_bgcolor=cf_canvas if cf_canvas!="plotly_dark" else None, plot_bgcolor=cf_canvas if cf_canvas!="plotly_dark" else None, margin=dict(l=10, r=10, t=10, b=10), height=400)
             st.plotly_chart(fig, use_container_width=True)
             
-            if f_ap: st.warning("⚠️ [SHIELD APERTURA ACTIVO] Bloqueo temporal en los primeros 30 minutos de Nueva York.")
-            elif est == "SIN_ALERTA": st.info("🛡️ Filtro Bollinger-EMA: Activo cotiza dentro de rangos normales de compresión. Primas protegidas.")
+            if f_ap:
+                st.warning("⚠️ [SHIELD APERTURA ACTIVO] Bloqueo temporal en los primeros 30 minutos de Nueva York.")
+            elif est == "SIN_ALERTA":
+                st.info("🛡️ Filtro Bollinger-EMA: Activo cotiza dentro de rangos normales de compresión. Primas protegidas.")
             else:
                 st.success(f"🚀 EXPANSIÓN CONFIRMADA: {est}")
                 iv, f_e = extraer_iv_segura(t, est, c_a)
@@ -155,3 +146,5 @@ elif mod == "🎫 Operar Opciones":
                 if any(pa in justificacion_usuario.lower() for pa in ["fomo", "rapido", "recuperar", "ganar", "urgente"]):
                     st.error("❌ RECHAZADA: Sesgo emocional detectado.")
                 else:
+                    st.success("✅ CONTRATO AUTORIZADO.")
+                    esc = "CALL" in est; d = 0.25 if cap < 3000 else 0.50; stk = round(c_a * (1.02 if esc else 0.98)) if cap < 3000 else round(c_a)
