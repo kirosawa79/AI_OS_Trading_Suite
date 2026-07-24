@@ -3,7 +3,51 @@ import streamlit as st, pandas as p, yfinance as yf, datetime as dt, os, plotly.
 from data_collector import DataCollector
 from database import TradingDatabase
 
+# Configuración del Entorno Gráfico AI-OS
 st.set_page_config(page_title="AI-OS PRO Dashboard", page_icon="🏛️", layout="wide")
+
+# =====================================================================
+# MÓDULO DE SEGURIDAD INTERNA: CONTROL DE ACCESO (LOGIN SHIELD)
+# =====================================================================
+# Definición de tus credenciales de Administrador Core (Puedes cambiarlas aquí)
+USUARIO_CORE = "kirosawa"
+PASSWORD_CORE = "ProTrading2026!"
+
+# Inicializar la variable de estado de sesión si no existe
+if "autenticado" not in st.session_state:
+    st.session_state["autenticado"] = False
+
+# Renderizar pantalla de bloqueo si el usuario no ha iniciado sesión
+if not st.session_state["autenticado"]:
+    st.markdown("<br><br>", unsafe_html=True)
+    col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
+    
+    with col_l2:
+        st.markdown("""
+        <div style="background-color: #1e1e1e; border: 2px solid #9b59b6; padding: 30px; border-radius: 15px; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">🏛️ AI-OS SECURITY SHIELD</h1>
+            <p style="color: #bdc3c7; font-size: 13px; margin-top: 5px;">Plataforma Cuántica Restringida | Acceso Exclusivo</p>
+        </div>
+        """, unsafe_html=True)
+        st.write("")
+        
+        # Cajas de entrada de credenciales con diseño adaptado
+        input_usuario = st.text_input("Ingresa tu ID de Desarrollador:", autocomplete="username").strip()
+        input_password = st.text_input("Ingresa tu Contraseña de Seguridad:", type="password", autocomplete="current-password")
+        
+        st.write("")
+        if st.button("Desbloquear Sistema Core", use_container_width=True):
+            if input_usuario == USUARIO_CORE and input_password == PASSWORD_CORE:
+                st.session_state["autenticado"] = True
+                st.success("🔒 Acceso Autorizado. Inicializando Kirosawa Engine...")
+                st.rerun()
+            else:
+                st.error("🛑 Credenciales Inválidas. Intento de acceso registrado en el servidor.")
+    st.stop() # Detiene la ejecución del resto del script si no está autenticado
+
+# =====================================================================
+# ENTORNO OPERATIVO LIBERADO (SOLO ACCESIBLE CON LOGIN EXITOSO)
+# =====================================================================
 st.title("🏛️ AI-INVESTMENT OPERATING SYSTEM (AI-OS) PRO")
 st.caption("Sistema de Control Cuántico, Filtro Psicológico & Apertura Shield | Desarrollado por KIROSAWA")
 
@@ -33,9 +77,6 @@ def verificar_filtro_apertura(index_serie):
     except: pass
     return False
 
-# =====================================================================
-# MÓDULO 1: OPERAR ACCIONES
-# =====================================================================
 if mod == "📈 Operar Acciones":
     st.header("📈 Operación Core de Acciones al Contado")
     t = st.text_input("Ticker:", "AAPL").upper().strip()
@@ -54,9 +95,6 @@ if mod == "📈 Operar Acciones":
                 st.info("🔥 CRUCE + Activo" if e20 > e40 else "⏳ Espera un Pullback a soportes.")
             else: st.error(f"❌ Riesgo: Precio por debajo de la EMA200 (${round(e200,2)}).")
 
-# =====================================================================
-# MÓDULO 2: OPERAR OPCIONES
-# =====================================================================
 elif mod == "🎫 Operar Opciones":
     st.header("🎫 Operación de Derivados (EMA Cruces, BB Shield & Apertura)")
     c1, col2, col3 = st.columns(3)
@@ -105,27 +143,3 @@ elif mod == "🎫 Operar Opciones":
                         if ive > 0: iv = ive
                     except Exception as e: st.warning(f"IV Base: {e}")
                     st.metric("Volatilidad Implícita (IV)", f"{round(iv * 100, 2)}%")
-                    if any(pa in just.lower() for pa in ["fomo", "rapido", "recuperar", "ganar", "urgente"]): st.error("❌ RECHAZADA: Sesgo emocional detectado.")
-                    else:
-                        st.success("✅ CONTRATO AUTORIZADO.")
-                        esc = "CALL" in est; d = 0.25 if cap < 3000 else 0.50; stk = round(c_a * (1.02 if esc else 0.98)) if cap < 3000 else round(c_a)
-                        tp = round(c_a * (1.05 if esc else 0.95), 2); sl = round(c_a * (0.98 if esc else 1.02), 2)
-                        p_b = max(round((c_a * 0.005) * (1 + iv), 2), 1.20); c_l = p_b * 100; m_r = cap * risk; cont = int(m_r // c_l) if c_l <= m_r else 0
-                        st.markdown("### 🎫 AI-OS FICHA OPERATIVA OPTIMIZADA")
-                        st.info(f"**Subyacente:** {t} (${round(c_a,2)} USD)"); st.write(f"**Strike Sugerido:** ${stk} USD | **Expiración:** {f_e}")
-                        st.success(f"🎯 Meta (TP): ${tp} USD | 🛑 Freno (SL): ${sl} USD")
-                        if cont > 0:
-                            st.metric("Contratos Sugeridos", cont); st.write(f"🛒 **Costo Total:** ${round(cont * c_l, 2)} USD")
-                            st.write(f"📈 **Proyección Ganancia:** +${round(abs(c_a - tp)*d*100*cont,2)} USD")
-                        else: st.error("🛑 Alerta: Costo excede tu presupuesto de riesgo.")
-                        try: db.guardar_registro(t, est, c_a, "Mente objetiva")
-                        except: pass
-            else: st.error("Sin datos.")
-        except Exception as e: st.error(f"Error: {e}")
-
-# =====================================================================
-# MÓDULO 3: ESCÁNER MULTITICKER PRO
-# =====================================================================
-elif mod == "🚀 Escáner Multiticker":
-    st.header("🚀 Tablero de Control - Escáner Cuantitativo Pro")
-    st.write("Filtro en tiempo real basado en el abanico de EMAs y las Bandas de Volatilidad de Bollinger.")
