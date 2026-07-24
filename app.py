@@ -22,7 +22,7 @@ def validar_credenciales():
 
 if not st.session_state["autenticado"]:
     st.markdown("<br><br>", unsafe_html=True)
-    col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
+    _, col_l2, _ = st.columns([1, 2, 1])
     with col_l2:
         st.markdown("""
         <div style="background-color: #1a1a1a; padding: 30px; border-radius: 15px; border: 2px solid #bdc3c7; text-align: center;">
@@ -43,13 +43,13 @@ st.title("🏛️ AI-INVESTMENT OPERATING SYSTEM (AI-OS) PRO")
 st.caption("Filtros Cuánticos, Análisis Geométrico & Apertura Shield | Desarrollado por KIROSAWA")
 
 db = TradingDatabase()
-st.sidebar.header("🕹️ PANEL DE CONTROL")
 mod = st.sidebar.radio("Módulo:", ["📈 Operar Acciones", "🎫 Operar Opciones", "🚀 Escáner Multiticker", "📋 Bitácora"])
 
 if st.sidebar.button("🔒 Cerrar Sesión Segura", use_container_width=True):
     st.session_state["autenticado"] = False
     st.rerun()
 
+# FUNCIÓN 1: CÁLCULO DE INDICADORES (EMAs + BOLLINGER 21)
 def c_emas_bb(s):
     d = p.DataFrame(index=s.index); d['Close'] = s
     for sp, c in [(9,'EMA9'),(20,'EMA20'),(40,'EMA40'),(100,'EMA100'),(200,'EMA200')]: d[c] = s.ewm(span=sp, adjust=False).mean()
@@ -57,6 +57,7 @@ def c_emas_bb(s):
     d['BB_Sup'] = d['BB_Base'] + (2.1 * d['BB_Std']); d['BB_Inf'] = d['BB_Base'] - (2.1 * d['BB_Std'])
     return d
 
+# FUNCIÓN 2: BUSCADOR DE VENCIMIENTO ÓPTIMO (VIERNES)
 def v_optimo(fs):
     hoy = dt.date.today()
     for f in fs:
@@ -64,14 +65,27 @@ def v_optimo(fs):
             y, m, d = [int(x) for x in f.split('-')]
             if 7 <= (dt.date(y, m, d) - hoy).days <= 15: return f
         except: continue
-    return fs if fs else "No disponible"
+    return fs[0] if fs else "No disponible"
 
+# FUNCIÓN 3: FILTRO DE APERTURA DE NUEVA YORK
 def verificar_filtro_apertura(index_serie):
     try:
         u = index_serie[-1]
         if hasattr(u, 'time'): return (u.time().hour == 9 and 30 <= u.time().minute <= 59)
     except: pass
     return False
+
+# FUNCIÓN 4: EXTRACCIÓN PROTEGIDA DE IV SHIELD
+def extraer_iv_segura(ticker, est, c_a):
+    try:
+        obj = yf.Ticker(ticker)
+        f_e = v_optimo(obj.options)
+        if f_e != "No disponible":
+            dfd = obj.option_chain(f_e).calls if "CALL" in est else obj.option_chain(f_e).puts
+            ive = float(dfd.loc[(dfd['strike'] - round(c_a)).abs().idxmin(), 'impliedVolatility'])
+            return ive if ive > 0 else 0.35, f_e
+    except: pass
+    return 0.35, "No disponible"
 
 # MÓDULO 1: ACCIONES
 if mod == "📈 Operar Acciones":
@@ -101,46 +115,43 @@ elif mod == "🎫 Operar Opciones":
     with col3: risk = st.slider("% Riesgo:", 1, 100, 10) / 100.0
     justificacion_usuario = st.text_area("¿Por qué compras contratos hoy? (Filtro Emocional):")
     if st.button("Lanzar Escáner"):
-        try:
-            df = yf.download(t, period="60d", interval="1h", progress=False)
-            if not df.empty:
-                sc = df['Close'][t].copy() if isinstance(df.columns, p.MultiIndex) else df['Close'].copy()
-                sc = p.Series(p.to_numeric(sc.to_numpy().flatten(), errors='coerce')).dropna()
-                m = c_emas_bb(sc)
-                c_a, e9, e20, e40, e200 = float(m['Close'].iloc[-1]), float(m['EMA9'].iloc[-1]), float(m['EMA20'].iloc[-1]), float(m['EMA40'].iloc[-1]), float(m['EMA200'].iloc[-1])
-                bb_sup, bb_inf = float(m['BB_Sup'].iloc[-1]), float(m['BB_Inf'].iloc[-1])
-                f_ap = verificar_filtro_apertura(df.index)
-                est = "CALL_PM40" if c_a > e20 and e20 > e40 and c_a > e200 and c_a > bb_sup else ("PUT_PM40" if c_a < e20 and e20 < e40 and c_a < e200 and c_a < bb_inf else "SIN_ALERTA")
+        df = yf.download(t, period="60d", interval="1h", progress=False)
+        if df.empty: st.error("Sin datos de mercado.")
+        else:
+            sc = df['Close'][t].copy() if isinstance(df.columns, p.MultiIndex) else df['Close'].copy()
+            sc = p.Series(p.to_numeric(sc.to_numpy().flatten(), errors='coerce')).dropna()
+            m = c_emas_bb(sc)
+            c_a, e9, e20, e40, e200 = float(m['Close'].iloc[-1]), float(m['EMA9'].iloc[-1]), float(m['EMA20'].iloc[-1]), float(m['EMA40'].iloc[-1]), float(m['EMA200'].iloc[-1])
+            bb_sup, bb_inf = float(m['BB_Sup'].iloc[-1]), float(m['BB_Inf'].iloc[-1])
+            
+            f_ap = verificar_filtro_apertura(df.index)
+            est = "CALL_PM40" if c_a > e20 and e20 > e40 and c_a > e200 and c_a > bb_sup else ("PUT_PM40" if c_a < e20 and e20 < e40 and c_a < e200 and c_a < bb_inf else "SIN_ALERTA")
+            
+            st.markdown("### 📊 ANÁLISIS GEOMÉTRICE INSTITUCIONAL (Velas 1H)")
+            dg = df.tail(45).copy(); dg['E9'] = dg['Close'].ewm(span=9, adjust=False).mean(); dg['E20'] = dg['Close'].ewm(span=20, adjust=False).mean(); dg['E40'] = dg['Close'].ewm(span=40, adjust=False).mean(); dg['E100'] = dg['Close'].ewm(span=100, adjust=False).mean(); dg['E200'] = dg['Close'].ewm(span=200, adjust=False).mean()
+            dg['BB_B'] = dg['Close'].rolling(21).mean(); dg['BB_S'] = dg['Close'].rolling(21).std(); dg['B_Sup'] = dg['BB_B'] + (2.1 * dg['BB_S']); dg['B_Inf'] = dg['BB_B'] - (2.1 * dg['BB_S'])
+            dg['p20'], dg['p40'] = dg['E20'].shift(1), dg['E40'].shift(1)
+            c_p, c_n = (dg['E20'] > dg['E40']) & (dg['p20'] <= dg['p40']), (dg['E20'] < dg['E40']) & (dg['p20'] >= dg['p40'])
+            
+            cf_canvas = "#2d2613" if f_ap else "plotly_dark"
+            fig = go.Figure()
+            fig.add_trace(go.Candlestick(x=dg.index, open=dg['Open'][t] if isinstance(dg.columns, p.MultiIndex) else dg['Open'], high=dg['High'][t] if isinstance(dg.columns, p.MultiIndex) else dg['High'], low=dg['Low'][t] if isinstance(dg.columns, p.MultiIndex) else dg['Low'], close=dg['Close'][t] if isinstance(dg.columns, p.MultiIndex) else dg['Close'], name="Velas"))
+            for c, cl, w in [('E9','#ffffff',1.5),('E20','#f1c40f',2),('E200','#9b59b6',2.5)]: fig.add_trace(go.Scatter(x=dg.index, y=dg[c], line=dict(color=cl, width=w), name=c))
+            fig.add_trace(go.Scatter(x=dg.index, y=dg['B_Sup'], line=dict(color='#2ecc71', width=1.5, dash='dash'), name="Banda Sup"))
+            fig.add_trace(go.Scatter(x=dg.index, y=dg['B_Inf'], line=dict(color='#e74c3c', width=1.5, dash='dash'), name="Banda Inf"))
+            dp, dn = dg[c_p], dg[c_n]
+            if not dp.empty: fig.add_trace(go.Scatter(x=dp.index, y=dp['Low']*0.997, mode='markers+text', marker=dict(symbol='triangle-up', size=11, color='#f1c40f'), text="CRUCE +", textposition="bottom center", name="Cruce +"))
+            if not dn.empty: fig.add_trace(go.Scatter(x=dn.index, y=dn['High']*1.003, mode='markers+text', marker=dict(symbol='triangle-down', size=11, color='#e67e22'), text="CRUCE -", textposition="top center", name="Cruce -"))
+            fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark" if cf_canvas=="plotly_dark" else None, paper_bgcolor=cf_canvas if cf_canvas!="plotly_dark" else None, plot_bgcolor=cf_canvas if cf_canvas!="plotly_dark" else None, margin=dict(l=10, r=10, t=10, b=10), height=400)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            if f_ap: st.warning("⚠️ [SHIELD APERTURA ACTIVO] Bloqueo temporal en los primeros 30 minutos de Nueva York.")
+            elif est == "SIN_ALERTA": st.info("🛡️ Filtro Bollinger-EMA: Activo cotiza dentro de rangos normales de compresión. Primas protegidas.")
+            else:
+                st.success(f"🚀 EXPANSIÓN CONFIRMADA: {est}")
+                iv, f_e = extraer_iv_segura(t, est, c_a)
+                st.metric("Volatilidad Implícita (IV)", f"{round(iv * 100, 2)}%")
                 
-                st.markdown("### 📊 ANÁLISIS GEOMÉTRICO INSTITUCIONAL (Velas 1H)")
-                dg = df.tail(45).copy(); dg['E9'] = dg['Close'].ewm(span=9, adjust=False).mean(); dg['E20'] = dg['Close'].ewm(span=20, adjust=False).mean(); dg['E40'] = dg['Close'].ewm(span=40, adjust=False).mean(); dg['E100'] = dg['Close'].ewm(span=100, adjust=False).mean(); dg['E200'] = dg['Close'].ewm(span=200, adjust=False).mean()
-                dg['BB_B'] = dg['Close'].rolling(21).mean(); dg['BB_S'] = dg['Close'].rolling(21).std(); dg['B_Sup'] = dg['BB_B'] + (2.1 * dg['BB_S']); dg['B_Inf'] = dg['BB_B'] - (2.1 * dg['BB_S'])
-                dg['p20'], dg['p40'] = dg['E20'].shift(1), dg['E40'].shift(1)
-                c_p, c_n = (dg['E20'] > dg['E40']) & (dg['p20'] <= dg['p40']), (dg['E20'] < dg['E40']) & (dg['p20'] >= dg['p40'])
-                
-                cf_canvas = "#2d2613" if f_ap else "plotly_dark"
-                fig = go.Figure()
-                fig.add_trace(go.Candlestick(x=dg.index, open=dg['Open'][t] if isinstance(dg.columns, p.MultiIndex) else dg['Open'], high=dg['High'][t] if isinstance(dg.columns, p.MultiIndex) else dg['High'], low=dg['Low'][t] if isinstance(dg.columns, p.MultiIndex) else dg['Low'], close=dg['Close'][t] if isinstance(dg.columns, p.MultiIndex) else dg['Close'], name="Velas"))
-                for c, cl, w in [('E9','#ffffff',1.5),('E20','#f1c40f',2),('E200','#9b59b6',2.5)]: fig.add_trace(go.Scatter(x=dg.index, y=dg[c], line=dict(color=cl, width=w), name=c))
-                fig.add_trace(go.Scatter(x=dg.index, y=dg['B_Sup'], line=dict(color='#2ecc71', width=1.5, dash='dash'), name="Banda Sup"))
-                fig.add_trace(go.Scatter(x=dg.index, y=dg['B_Inf'], line=dict(color='#e74c3c', width=1.5, dash='dash'), name="Banda Inf"))
-                dp, dn = dg[c_p], dg[c_n]
-                if not dp.empty: fig.add_trace(go.Scatter(x=dp.index, y=dp['Low']*0.997, mode='markers+text', marker=dict(symbol='triangle-up', size=11, color='#f1c40f'), text="CRUCE +", textposition="bottom center", name="Cruce +"))
-                if not dn.empty: fig.add_trace(go.Scatter(x=dn.index, y=dn['High']*1.003, mode='markers+text', marker=dict(symbol='triangle-down', size=11, color='#e67e22'), text="CRUCE -", textposition="top center", name="Cruce -"))
-                fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark" if cf_canvas=="plotly_dark" else None, paper_bgcolor=cf_canvas if cf_canvas!="plotly_dark" else None, plot_bgcolor=cf_canvas if cf_canvas!="plotly_dark" else None, margin=dict(l=10, r=10, t=10, b=10), height=400)
-                st.plotly_chart(fig, use_container_width=True)
-                
-                if f_ap: st.warning("⚠️ [SHIELD APERTURA ACTIVO] Bloqueo temporal en los primeros 30 minutos de Nueva York.")
-                elif est == "SIN_ALERTA": st.info("🛡️ Filtro Bollinger-EMA: Activo cotiza dentro de rangos normales de compresión. Primas protegidas.")
+                if any(pa in justificacion_usuario.lower() for pa in ["fomo", "rapido", "recuperar", "ganar", "urgente"]):
+                    st.error("❌ RECHAZADA: Sesgo emocional detectado.")
                 else:
-                    st.success(f"🚀 EXPANSIÓN CONFIRMADA: {est}"); iv = 0.35; f_e = "No disponible"
-                    try:
-                        obj = yf.Ticker(t); f_e = v_optimo(obj.options)
-                        dfd = obj.option_chain(f_e).calls if "CALL" in est else obj.option_chain(f_e).puts
-                        ive = float(dfd.loc[(dfd['strike'] - round(c_a)).abs().idxmin(), 'impliedVolatility'])
-                        if ive > 0: iv = ive
-                    except: pass
-                    st.metric("Volatilidad Implícita (IV)", f"{round(iv * 100, 2)}%")
-                    if any(pa in justificacion_usuario.lower() for pa in ["fomo", "rapido", "recuperar", "ganar", "urgente"]): st.error("❌ RECHAZADA: Sesgo emocional detectado.")
-                    else:
-                        st.success("✅ CONTRATO AUTORIZADO.")
