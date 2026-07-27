@@ -1,209 +1,94 @@
-# -*- coding: utf-8 -*-
-import streamlit as st, pandas as p, yfinance as yf, datetime as dt, os, plotly.graph_objects as go
-from data_collector import DataCollector
-from database import TradingDatabase
+from __future__ import annotations
+import shutil
+from pathlib import Path
+import pandas as pd
+import streamlit as st
+from config.settings import SETTINGS
+from market.data import download_ohlcv
+from market.session import opening_shield_active
+from indicators.engine import calculate_indicators
+from signals.engine import evaluate_signal
+from psychology.engine import analyze_justification
+from options_engine.selector import select_contract, OptionSelectionError
+from risk.engine import build_position_plan
+from database.repository import TradingRepository
+from charts.plotly_engine import market_chart
+from scanner.service import scan_tickers
 
-# Configuración del Entorno Gráfico AI-OS PRO
-st.set_page_config(page_title="AI-OS PRO Dashboard", page_icon="🏛️", layout="wide")
+st.set_page_config(page_title=SETTINGS.app_name,page_icon='🏛️',layout='wide')
 
-# =====================================================================
-# MÓDULO DE SEGURIDAD INTERNA: LOGIN CONTROL LOCK
-# =====================================================================
-if "autenticado" not in st.session_state:
-    st.session_state["autenticado"] = False
-
-def validar_credenciales():
-    try:
-        # Extrae las credenciales ocultas del servidor cloud de forma cifrada
-        usuario_correcto = st.secrets["auth"]["usuario"]
-        clave_correcta = st.secrets["auth"]["clave"]
-        
-        usuario_ingresado = st.session_state.get("usuario_input", "").upper().strip()
-        clave_ingresada = st.session_state.get("clave_input", "")
-        
-        if usuario_ingresado == usuario_correcto.upper().strip() and clave_ingresada == clave_correcta:
-            st.session_state["autenticado"] = True
-            st.session_state["usuario_input"] = ""
-            st.session_state["clave_input"] = ""
-        else:
-            st.error("🛑 Acceso Denegado: ID de Operador o Clave inválida.")
-    except Exception as e:
-        st.error("⚠️ Error Crítico: No se encontraron las variables de seguridad en el servidor.")
-
-if not st.session_state["autenticado"]:
-    with st.container(border=True):
-        st.title("🏛️ AI-INVESTMENT OS")
-        st.write("🔒 **SECURITY ACCESS TERMINAL**")
-        st.text_input("ID de Operador:", key="usuario_input", placeholder="Ej: KIROSAWA")
-        st.text_input("Clave de Encriptación:", key="clave_input", type="password", placeholder="••••••••")
-        st.button("Desbloquear Terminal", on_click=validar_credenciales, use_container_width=True)
-    st.stop()
-
-# =====================================================================
-# SINOPSIS DEL SISTEMA (EJECUCIÓN AUTORIZADA)
-# =====================================================================
-st.title("🏛️ AI-INVESTMENT OPERATING SYSTEM (AI-OS) PRO")
-st.caption("Filtros Cuánticos, Análisis Geométrico & Apertura Shield | Desarrollado por KIROSAWA")
-
-db = TradingDatabase()
-mod = st.sidebar.radio("Módulo:", ["📈 Operar Acciones", "🎫 Operar Opciones", "🚀 Escáner Multiticker", "📋 Bitácora"])
-
-if st.sidebar.button("🔒 Cerrar Sesión Segura", use_container_width=True):
-    st.session_state["autenticado"] = False
-    st.rerun()
-
-# --- FUNCIONES CORE MATEMÁTICAS ---
-def c_emas_bb(s):
-    d = p.DataFrame(index=s.index); d['Close'] = s
-    for sp, c in [(9,'EMA9'),(20,'EMA20'),(40,'EMA40'),(100,'EMA100'),(200,'EMA200')]: d[c] = s.ewm(span=sp, adjust=False).mean()
-    d['BB_Base'] = s.rolling(window=21).mean(); d['BB_Std'] = s.rolling(window=21).std()
-    d['BB_Sup'] = d['BB_Base'] + (2.1 * d['BB_Std']); d['BB_Inf'] = d['BB_Base'] - (2.1 * d['BB_Std'])
-    return d
-
-def v_optimo(fs):
-    hoy = dt.date.today()
-    for f in fs:
+def authenticated():
+    if st.session_state.get('authenticated'): return True
+    st.title('🏛️ AI-OS PRO v3 Institutional')
+    user=st.text_input('ID de operador').upper().strip()
+    password=st.text_input('Clave',type='password')
+    if st.button('Desbloquear terminal',use_container_width=True):
         try:
-            y, m, d = [int(x) for x in f.split('-')]
-            if 7 <= (dt.date(y, m, d) - hoy).days <= 15: return f
-        except: continue
-    return fs if fs else "No disponible"
-
-def verificar_filtro_apertura(index_serie):
-    try:
-        u = index_serie[-1]
-        if hasattr(u, 'time'): return (u.time().hour == 9 and 30 <= u.time().minute <= 59)
-    except: pass
+            ok=user==st.secrets['auth']['usuario'].upper().strip() and password==st.secrets['auth']['clave']
+        except Exception:
+            st.error('Configura .streamlit/secrets.toml.'); return False
+        if ok: st.session_state['authenticated']=True; st.rerun()
+        else: st.error('Credenciales inválidas.')
     return False
 
-def extraer_iv_segura(ticker, est, c_a):
-    try:
-        obj = yf.Ticker(ticker); f_e = v_optimo(obj.options)
-        if f_e != "No disponible":
-            dfd = obj.option_chain(f_e).calls if "CALL" in est else obj.option_chain(f_e).puts
-            ive = float(dfd.loc[(dfd['strike'] - round(c_a)).abs().idxmin(), 'impliedVolatility'])
-            return (ive if ive > 0 else 0.35), f_e
-    except: pass
-    return 0.35, "No disponible"
+if not authenticated(): st.stop()
 
-# =====================================================================
-# MÓDULO 1: OPERAR ACCIONES
-# =====================================================================
-if mod == "📈 Operar Acciones":
-    st.header("📈 Operación Core de Acciones al Contado")
-    t = st.text_input("Ticker:", "AAPL", key="txt_acciones").upper().strip()
-    cap = st.number_input("Capital (USD):", min_value=10.0, value=1000.0, key="num_acciones")
-    justificacion_usuario = st.text_area("Justificación técnica:", key="area_acciones")
-    if st.button("Evaluar Acción", key="btn_acciones"):
-        df = yf.download(t, period="60d", interval="1h", progress=False)
-        if df.empty: st.error("Sin datos.")
-        else:
-            sc = df['Close'][t].copy() if isinstance(df.columns, p.MultiIndex) else df['Close'].copy()
-            sc = p.Series(p.to_numeric(sc.to_numpy().flatten(), errors='coerce')).dropna()
-            m = c_emas_bb(sc)
-            c_a, e20, e40, e200 = float(m['Close'].iloc[-1]), float(m['EMA20'].iloc[-1]), float(m['EMA40'].iloc[-1]), float(m['EMA200'].iloc[-1])
-            if c_a > e200:
-                st.success(f"🟢 Filtro Estructural Aprobado. Precio (${round(c_a,2)}) > EMA200 (${round(e200,2)}).")
-                st.info("🔥 CRUCE + Activo" if e20 > e40 else "⏳ Espera un Pullback a soportes.")
-            else: st.error(f"❌ Riesgo: Precio por debajo de la EMA200 (${round(e200,2)}).")
-# =====================================================================
-# MÓDULO 2: OPERAR OPCIONES
-# =====================================================================
-elif mod == "🎫 Operar Opciones":
-    st.header("🎫 Operación de Derivados (EMA Cruces, BB Shield & Apertura)")
-    col1, col2, col3 = st.columns(3)
-    with col1: t = st.text_input("Subyacente:", "SPY", key="txt_opciones").upper().strip()
-    with col2: cap = st.number_input("Capital Cuenta (USD):", min_value=10.0, value=1000.0, key="num_opciones")
-    with col3: risk = st.slider("% Riesgo:", 1, 100, 10, key="sld_opciones") / 100.0
-    justificacion_usuario = st.text_area("¿Por qué compras contratos hoy? (Filtro Emocional):", key="area_opciones")
-    if st.button("Lanzar Escáner", key="btn_opciones"):
-        df = yf.download(t, period="60d", interval="1h", progress=False)
-        if df.empty: st.error("Sin datos de mercado.")
-        else:
-            sc = df['Close'][t].copy() if isinstance(df.columns, p.MultiIndex) else df['Close'].copy()
-            sc = p.Series(p.to_numeric(sc.to_numpy().flatten(), errors='coerce')).dropna()
-            m = c_emas_bb(sc)
-            c_a, e9, e20, e40, e200 = float(m['Close'].iloc[-1]), float(m['EMA9'].iloc[-1]), float(m['EMA20'].iloc[-1]), float(m['EMA40'].iloc[-1]), float(m['EMA200'].iloc[-1])
-            bb_sup, bb_inf = float(m['BB_Sup'].iloc[-1]), float(m['BB_Inf'].iloc[-1])
-            f_ap = verificar_filtro_apertura(df.index)
-            est = "CALL_PM40" if c_a > e20 and e20 > e40 and c_a > e200 and c_a > bb_sup else ("PUT_PM40" if c_a < e20 and e20 < e40 and c_a < e200 and c_a < bb_inf else "SIN_ALERTA")
-            
-            st.markdown("### 📊 ANÁLISIS GEOMÉTRICO INSTITUCIONAL (Velas 1H)")
-            dg = df.tail(45).copy(); dg['E9'] = dg['Close'].ewm(span=9, adjust=False).mean(); dg['E20'] = dg['Close'].ewm(span=20, adjust=False).mean(); dg['E40'] = dg['Close'].ewm(span=40, adjust=False).mean(); dg['E100'] = dg['Close'].ewm(span=100, adjust=False).mean(); dg['E200'] = dg['Close'].ewm(span=200, adjust=False).mean()
-            dg['BB_B'] = dg['Close'].rolling(21).mean(); dg['BB_S'] = dg['Close'].rolling(21).std(); dg['B_Sup'] = dg['BB_B'] + (2.1 * dg['BB_S']); dg['B_Inf'] = dg['BB_B'] - (2.1 * dg['BB_S'])
-            dg['p20'], dg['p40'] = dg['E20'].shift(1), dg['E40'].shift(1)
-            c_p, c_n = (dg['E20'] > dg['E40']) & (dg['p20'] <= dg['p40']), (dg['E20'] < dg['E40']) & (dg['p20'] >= dg['p40'])
-            
-            cf_canvas = "#2d2613" if f_ap else "plotly_dark"
-            fig = go.Figure()
-            fig.add_trace(go.Candlestick(x=dg.index, open=dg['Open'][t] if isinstance(dg.columns, p.MultiIndex) else dg['Open'], high=dg['High'][t] if isinstance(dg.columns, p.MultiIndex) else dg['High'], low=dg['Low'][t] if isinstance(dg.columns, p.MultiIndex) else dg['Low'], close=dg['Close'][t] if isinstance(dg.columns, p.MultiIndex) else dg['Close'], name="Velas"))
-            for c, cl, w in [('E9','#ffffff',1.5),('E20','#f1c40f',2),('E200','#9b59b6',2.5)]: fig.add_trace(go.Scatter(x=dg.index, y=dg[c], line=dict(color=cl, width=w), name=c))
-            fig.add_trace(go.Scatter(x=dg.index, y=dg['B_Sup'], line=dict(color='#2ecc71', width=1.5, dash='dash'), name="Banda Sup"))
-            fig.add_trace(go.Scatter(x=dg.index, y=dg['B_Inf'], line=dict(color='#e74c3c', width=1.5, dash='dash'), name="Banda Inf"))
-            dp, dn = dg[c_p], dg[c_n]
-            if not dp.empty: fig.add_trace(go.Scatter(x=dp.index, y=dp['Low']*0.997, mode='markers+text', marker=dict(symbol='triangle-up', size=11, color='#f1c40f'), text="CRUCE +", textposition="bottom center", name="Cruce +"))
-            if not dn.empty: fig.add_trace(go.Scatter(x=dn.index, y=dn['High']*1.003, mode='markers+text', marker=dict(symbol='triangle-down', size=11, color='#e67e22'), text="CRUCE -", textposition="top center", name="Cruce -"))
-            fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark" if cf_canvas=="plotly_dark" else None, paper_bgcolor=cf_canvas if cf_canvas!="plotly_dark" else None, plot_bgcolor=cf_canvas if cf_canvas!="plotly_dark" else None, margin=dict(l=10, r=10, t=10, b=10), height=400)
-            st.plotly_chart(fig, use_container_width=True)
-            
-            if f_ap: st.warning("⚠️ [SHIELD APERTURA ACTIVO] Bloqueo temporal en los primeros 30 minutos de Nueva York.")
-            elif est == "SIN_ALERTA": st.info("🛡️ Filtro Bollinger-EMA: Activo cotiza dentro de rangos normales de compresión. Primas protegidas.")
-            else:
-                st.success(f"🚀 EXPANSIÓN CONFIRMADA: {est}")
-                iv, f_e = extraer_iv_segura(t, est, c_a)
-                st.metric("Volatilidad Implícita (IV)", f"{round(iv * 100, 2)}%")
-                if any(pa in justificacion_usuario.lower() for pa in ["fomo", "rapido", "recuperar", "ganar", "urgente"]): st.error("❌ RECHAZADA: Sesgo emocional detectado.")
-                else:
-                    st.success("✅ CONTRATO AUTORIZADO.")
-                    esc = "CALL" in est; d = 0.25 if cap < 3000 else 0.50; stk = round(c_a * (1.02 if esc else 0.98)) if cap < 3000 else round(c_a)
-                    tp = round(c_a * (1.05 if esc else 0.95), 2); sl = round(c_a * (0.98 if esc else 1.02), 2)
-                    p_b = max(round((c_a * 0.005) * (1 + iv), 2), 1.20); c_l = p_b * 100; m_r = cap * risk; cont = int(m_r // c_l) if c_l <= m_r else 0
-                    st.markdown("### 🎫 AI-OS FICHA OPERATIVA OPTIMIZADA")
-                    st.info(f"**Subyacente:** {t} (${round(c_a,2)} USD)"); st.write(f"**Strike Sugerido:** ${stk} USD | **Expiración:** {f_e}")
-                    st.success(f"🎯 Meta (TP): ${tp} USD | 🛑 Freno (SL): ${sl} USD")
-                    if cont > 0:
-                        st.metric("Contratos Sugeridos", cont); st.write(f"🛒 **Costo Total:** ${round(cont * c_l, 2)} USD")
-                        st.write(f"📈 **Proyección Ganancia:** +${round(abs(c_a - tp)*d*100*cont,2)} USD")
-                    else: st.error("🛑 Alerta: Costo excede tu presupuesto de riesgo.")
-                    try: db.guardar_registro(t, est, c_a, "Mente objetiva")
-                    except: pass
+@st.cache_resource
+def repo(): return TradingRepository()
 
-# =====================================================================
-# MÓDULO 3: ESCÁNER MULTITICKER PRO
-# =====================================================================
-elif mod == "🚀 Escáner Multiticker":
-    st.header("🚀 Tablero de Control - Escáner Cuantitativo Pro")
-    st.write("Filtro en tiempo real basado en el abanico de EMAs y las Bandas de Volatilidad de Bollinger.")
-    ent = st.text_input("Ingresa los Tickers separados por comas:", "AAPL,NVDA,SPY,TSLA", key="txt_escaner_fijo").upper().strip()
-    if st.button("Lanzar Escaneo", key="btn_escaner_fijo"):
-        lista = [x.strip() for x in ent.split(",") if x.strip()]
-        cols = st.columns(4)
-        for i, t in enumerate(lista):
-            with cols[i % 4]:
-                try:
-                    df = yf.download(t, period="60d", interval="1h", progress=False)
-                    if not df.empty:
-                        sc = df['Close'][t].copy() if isinstance(df.columns, p.MultiIndex) else df['Close'].copy()
-                        sc = p.Series(p.to_numeric(sc.to_numpy().flatten(), errors='coerce')).dropna()
-                        m = c_emas_bb(sc)
-                        c_ac, e20, e40, e200 = float(m['Close'].iloc[-1]), float(m['EMA20'].iloc[-1]), float(m['EMA40'].iloc[-1]), float(m['EMA200'].iloc[-1])
-                        b_sup, b_inf = float(m['BB_Sup'].iloc[-1]), float(m['BB_Inf'].iloc[-1])
-                        st.subheader(f"📊 {t}"); st.metric(label="Precio", value=f"${round(c_ac, 2)}")
-                        if c_ac > e20 and e20 > e40 and c_ac > e200 and c_ac > b_sup: st.success("🚀 SQUEEZE + (CALL)")
-                        elif c_ac < e20 and e20 < e40 and c_ac < e200 and c_ac < b_inf: st.error("🔴 SQUEEZE - (PUT)")
-                        else: st.info("⏳ COMPRIMIDO / RANGO")
-                    else: st.error("Sin datos")
-                except: st.error("Error")
+@st.cache_data(ttl=300,show_spinner=False)
+def load_market(ticker): return calculate_indicators(download_ohlcv(ticker))
 
-# =====================================================================
-# MÓDULO 4: BITÁCORA HISTÓRICA
-# =====================================================================
-elif mod == "📋 Bitácora":
-    st.header("📋 Auditoría de Trades & Historial SQLite")
-    if os.path.exists("trading_system.db"):
+st.title(SETTINGS.app_name)
+module=st.sidebar.radio('Módulo',['📈 Acciones','🎫 Opciones','🚀 Escáner','📋 Bitácora'])
+if st.sidebar.button('Cerrar sesión'):
+    st.session_state.clear(); st.rerun()
+
+if module=='📈 Acciones':
+    ticker=st.text_input('Ticker','AAPL').upper().strip()
+    justification=st.text_area('Plan técnico','Entrada sobre soporte; stop bajo EMA40; riesgo definido.')
+    if st.button('Evaluar acción'):
         try:
-            import sqlite3; conn = sqlite3.connect("trading_system.db")
-            df_db = p.read_sql_query("SELECT * FROM registro_operaciones ORDER BY ROWID DESC LIMIT 10;", conn)
-            st.dataframe(df_db, use_container_width=True); conn.close()
-        except: st.error("Error de lectura.")
-    else: st.warning("Sin base de datos local.")
+            data=load_market(ticker); shield=opening_shield_active(data.index[-1]); signal=evaluate_signal(ticker,data,shield); psych=analyze_justification(justification)
+            st.plotly_chart(market_chart(data,ticker),use_container_width=True)
+            c1,c2,c3=st.columns(3); c1.metric('Precio',f"${data['Close'].iloc[-1]:.2f}"); c2.metric('AI score',f'{signal.score}/100'); c3.metric('Señal',signal.strategy)
+            for x in signal.reasons: st.success(x)
+            for x in signal.warnings: st.warning(x)
+            if psych.blocked: st.error(f'{psych.bias}: {psych.message}')
+            elif signal.authorized: st.success('Evaluación técnica autorizada. No equivale a una orden ejecutada.')
+            else: st.info('No se autoriza una entrada con las reglas actuales.')
+            repo().save_evaluation(ticker=ticker,estrategia=signal.strategy,justificacion=justification,bloqueado=int(psych.blocked or not signal.authorized),sesgo_detectado=psych.bias,precio=float(data['Close'].iloc[-1]),score=signal.score,estado='EVALUADA')
+        except Exception as exc: st.exception(exc)
+
+elif module=='🎫 Opciones':
+    a,b,c=st.columns(3)
+    ticker=a.text_input('Subyacente','SPY').upper().strip(); capital=b.number_input('Capital USD',min_value=10.0,value=1000.0); risk_pct=c.slider('Riesgo máximo',1,10,3)/100
+    justification=st.text_area('Plan técnico','Entrada por ruptura; stop estructural; riesgo máximo definido.')
+    if st.button('Evaluar contrato real'):
+        try:
+            data=load_market(ticker); signal=evaluate_signal(ticker,data,opening_shield_active(data.index[-1])); psych=analyze_justification(justification)
+            st.plotly_chart(market_chart(data,ticker),use_container_width=True)
+            if psych.blocked: st.error(f'{psych.bias}: {psych.message}')
+            elif not signal.authorized: st.warning(f'Señal no autorizada: {signal.strategy}, score {signal.score}/100.')
+            else:
+                contract=select_contract(ticker,signal.strategy,float(data['Close'].iloc[-1])); plan=build_position_plan(capital,risk_pct,contract.ask)
+                cols=st.columns(5)
+                cols[0].metric('Tipo',contract.option_type); cols[1].metric('Strike',f'${contract.strike:.2f}'); cols[2].metric('Ask',f'${contract.ask:.2f}'); cols[3].metric('IV',f'{contract.implied_volatility*100:.1f}%'); cols[4].metric('Spread',f'{contract.spread_pct*100:.1f}%')
+                st.write(f'**Vencimiento:** {contract.expiration} · **OI:** {contract.open_interest} · **Volumen:** {contract.volume} · **Contrato:** {contract.contract_symbol}')
+                if plan.valid:
+                    st.success(f'{plan.quantity} contrato(s), costo estimado ${plan.total_cost:,.2f}, dentro de un presupuesto de ${plan.risk_budget:,.2f}.')
+                    if st.button('Registrar evaluación autorizada'):
+                        repo().save_evaluation(ticker=ticker,estrategia=signal.strategy,justificacion=justification,bloqueado=0,sesgo_detectado=psych.bias,precio=float(data['Close'].iloc[-1]),score=signal.score,contrato=contract.contract_symbol,vencimiento=contract.expiration,strike=contract.strike,bid=contract.bid,ask=contract.ask,iv=contract.implied_volatility,open_interest=contract.open_interest,volumen=contract.volume,riesgo_pct=risk_pct,cantidad=plan.quantity,costo_total=plan.total_cost,estado='AUTORIZADA')
+                        st.success('Evaluación guardada.')
+                else: st.error(plan.reason)
+        except OptionSelectionError as exc: st.error(str(exc))
+        except Exception as exc: st.exception(exc)
+
+elif module=='🚀 Escáner':
+    text=st.text_input('Tickers separados por comas','AAPL,NVDA,SPY,TSLA')
+    if st.button('Escanear'):
+        tickers=list(dict.fromkeys(x.strip().upper() for x in text.split(',') if x.strip()))[:20]
+        st.dataframe(pd.DataFrame(scan_tickers(tickers)),use_container_width=True,hide_index=True)
+
+else:
+    st.dataframe(repo().recent(100),use_container_width=True,hide_index=True)
