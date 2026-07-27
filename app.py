@@ -13,12 +13,22 @@ if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 
 def validar_credenciales():
-    if st.session_state["usuario_input"].upper().strip() == "KIROSAWA" and st.session_state["clave_input"] == "Aios2026*":
-        st.session_state["autenticado"] = True
-        st.session_state["usuario_input"] = ""
-        st.session_state["clave_input"] = ""
-    else:
-        st.error("🛑 Acceso Denegado: Credenciales inválidas.")
+    try:
+        # Extrae las credenciales ocultas del servidor cloud de forma cifrada
+        usuario_correcto = st.secrets["auth"]["usuario"]
+        clave_correcta = st.secrets["auth"]["clave"]
+        
+        usuario_ingresado = st.session_state.get("usuario_input", "").upper().strip()
+        clave_ingresada = st.session_state.get("clave_input", "")
+        
+        if usuario_ingresado == usuario_correcto.upper().strip() and clave_ingresada == clave_correcta:
+            st.session_state["autenticado"] = True
+            st.session_state["usuario_input"] = ""
+            st.session_state["clave_input"] = ""
+        else:
+            st.error("🛑 Acceso Denegado: ID de Operador o Clave inválida.")
+    except Exception as e:
+        st.error("⚠️ Error Crítico: No se encontraron las variables de seguridad en el servidor.")
 
 if not st.session_state["autenticado"]:
     with st.container(border=True):
